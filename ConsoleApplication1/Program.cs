@@ -5,10 +5,12 @@ using ServiceStack.Text;
 using System;
 using System.Collections.Generic;
 using System.Data.Entity;
+using System.Data.Entity.Validation;
 using System.Linq;
 using System.Net;
 using System.Net.Http;
 using System.Net.Http.Headers;
+using System.Security.Cryptography;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
@@ -78,9 +80,9 @@ namespace ConsoleApplication1
         }
 
         private static void GetAgent<T>(LogCondition logCondition,
-            int tryCount, Func<clogEntity ,DbSet<T>> getSource) where T : errorInfoBase
+            int tryCount, Func<logEntity ,DbSet<T>> getSource) where T : errorInfoBase
         {
-            using (var db = new clogEntity())
+            using (var db = new logEntity())
             {
                 var source = getSource(db);
                 var tryTmp = source.Take(tryCount).ToList();
@@ -104,7 +106,13 @@ namespace ConsoleApplication1
                             //db.MoreInfos
                             source.Remove(moreGet);
                             //db.MoreInfos.Remove(moreGet);
-                            db.SaveChanges();
+                            try {
+                                db.SaveChanges();
+                            }
+                            catch(Exception e)
+                            {
+                                Console.WriteLine(e);
+                            }
                         }
                     }
                 }
@@ -113,7 +121,7 @@ namespace ConsoleApplication1
 
         private static LogCondition Init()
         {
-            Database.SetInitializer(new DropCreateDatabaseIfModelChanges<clogEntity>());
+            Database.SetInitializer(new DropCreateDatabaseIfModelChanges<logEntity>());
             var hostList = new string[]{
                                "SH02SVR2626",//"10.8.5.99",
                                "SH02SVR1860",// "10.8.5.112",
@@ -121,7 +129,7 @@ namespace ConsoleApplication1
                                "VMS05885",// "10.8.5.36",
                                "VMS05908",// "10.8.5.39",
                                "VMS05909",// "10.8.5.44"
-                               "SH02SVR1636"// "10.8.5.25"
+                               "SH02SVR1636"// "10.8.5.25" 堡垒
                      };
             var logLevelArr = new string[]{
                 "INFO","ERROR"
@@ -183,14 +191,14 @@ namespace ConsoleApplication1
         {
             #region prepare for time
             TimeTable endTmp = null;
-            using (var db = new clogEntity())
+            using (var db = new logEntity())
             {
                 if (db.Times.Count() < 1)
                 {
                     endTmp = new TimeTable();
-                    endTmp.start = new DateTime(2014, 10, 3);// headTime.end;
+                    endTmp.start = new DateTime(2015, 1, 16, 16, 0,0);// headTime.end;
                     endTmp.end = endTmp.start.AddSeconds(30);
-                    endTmp.head = new DateTime(2014, 10, 3);
+                    endTmp.head = new DateTime(2015, 1, 16, 16, 0, 0);
                     //db.Times.Add(endTmp);
                     //db.SaveChanges();
                 }
@@ -253,7 +261,7 @@ namespace ConsoleApplication1
             Console.ForegroundColor = ConsoleColor.DarkYellow;
             Console.WriteLine("Task totle time = " + ((t2 - t1) / 10000000).ToString());
 
-            using (var db = new clogEntity())
+            using (var db = new logEntity())
             {
                 foreach (var t in tasks)
                 {
@@ -275,7 +283,13 @@ namespace ConsoleApplication1
                     }
                 }
                 db.Times.Add(endTmp);
-                db.SaveChanges();
+                try {
+                    db.SaveChanges();
+                }
+                catch(DbEntityValidationException e)
+                {
+                    Console.WriteLine(e);
+                }
             }
         }
 
@@ -288,7 +302,7 @@ namespace ConsoleApplication1
             var rsObj = GetLogStrong(url, () =>
             {
                 errorInfoTmp.IsError = true;
-                errorInfoTmp.ErrorRetryInfo = new RetryInfo { url = url, head = head };
+                errorInfoTmp.ErrorRetryInfo = new RetryInfo { url = url, head = head,hashedUrl = url.Message2KeyWord() };
                 //errorInfoTmp = error;
             }, out b);
 
@@ -298,7 +312,7 @@ namespace ConsoleApplication1
                                                         rsObj.lastTimestamp, rsObj.lastScanRowKey);
 
                 errorInfoTmp.HasMore = true;
-                errorInfoTmp.ErrorMoreInfo = new MoreInfo { url = urlTmp, head = head };
+                errorInfoTmp.ErrorMoreInfo = new MoreInfo { url = urlTmp, head = head, hashedUrl = url.Message2KeyWord() };
             });
 
             return new getTaskResult { LogInfoList = infoTmpList, LogErrorInfo = errorInfoTmp };// infoTmpList;
@@ -313,7 +327,7 @@ namespace ConsoleApplication1
             var rsObj = GetLog(url, () =>
             {
                 errorInfoTmp.IsError = true;
-                errorInfoTmp.ErrorRetryInfo = new RetryInfo { url = url, head = head };
+                errorInfoTmp.ErrorRetryInfo = new RetryInfo { url = url, head = head, hashedUrl = url.Message2KeyWord() };
                 //errorInfoTmp = error;
             }, out b);
 
@@ -323,7 +337,7 @@ namespace ConsoleApplication1
                                                             rsObj["lastTimestamp"], rsObj["lastScanRowKey"]);
 
                     errorInfoTmp.HasMore = true;
-                    errorInfoTmp.ErrorMoreInfo = new MoreInfo { url = urlTmp, head = head };
+                    errorInfoTmp.ErrorMoreInfo = new MoreInfo { url = urlTmp, head = head, hashedUrl = url.Message2KeyWord() };
                 });
 
             return new getTaskResult { LogInfoList = infoTmpList, LogErrorInfo = errorInfoTmp };// infoTmpList;
@@ -353,7 +367,7 @@ namespace ConsoleApplication1
 
                     if (logCondition.appidLs.Contains(appIdTmp) && logCondition.LogLevelLs.Contains(logLevelTmp))
                     {
-                        if (rsObj.size > 100)
+                        if (rsObj.size == 100)
                         {
                             Console.ForegroundColor = ConsoleColor.Red;
                             Console.WriteLine(rsObj.size);
@@ -453,7 +467,7 @@ namespace ConsoleApplication1
 
                     if (logCondition.appidLs.Contains(appIdTmp) && logCondition.LogLevelLs.Contains(logLevelTmp))
                     {
-                        if (int.Parse(rsObj["size"].ToString()) > 100)
+                        if (int.Parse(rsObj["size"].ToString()) == 100)
                         {
                             Console.ForegroundColor = ConsoleColor.Red;
                             Console.WriteLine(rsObj["size"]);
@@ -746,5 +760,18 @@ namespace ConsoleApplication1
     {
         public string key { get; set; }
         public string value { get; set; }
+    }
+
+    public static class Sha1Help
+    {
+        public static string Message2KeyWord(this string message)
+        {
+            byte[] data = Encoding.UTF8.GetBytes(message);
+
+            var sha = new SHA1CryptoServiceProvider();
+            data = sha.ComputeHash(data);
+            var keyTmp = System.Convert.ToBase64String(data);
+            return keyTmp;
+        }
     }
 }

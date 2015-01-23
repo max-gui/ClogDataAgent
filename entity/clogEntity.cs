@@ -24,7 +24,7 @@ namespace entity
         SH02SVR1636 = 419760138// "10.8.5.25"
     }
 
-    public class clogEntity:DbContext
+    public class logEntity:DbContext
     {
         public DbSet<LogInfo> Logs { get; set; }
         public DbSet<TimeTable> Times { get; set; }
@@ -44,6 +44,9 @@ namespace entity
     public class errorInfoBase
     {
         [Key]
+        ////[MaxLength]
+        //[StringLength(500)]
+        public string hashedUrl { get; set; }
         public string url { get; set; }
         public DateTime head { get; set; }
     }
